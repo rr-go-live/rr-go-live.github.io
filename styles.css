@@ -81,17 +81,66 @@ section h2 {
   margin-bottom: 32px;
 }
 
+/* ── Project collapsible ─────────────────────────────────────── */
+
 .project {
-  margin-bottom: 48px;
+  margin-bottom: 0;
+  border-bottom: 1px solid #e0e0e0;
 }
 
-.project h3 {
-  font-size: 20px;
+.project:first-of-type {
+  border-top: 1px solid #e0e0e0;
+}
+
+/* The clickable header row */
+.project-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.project-header::-webkit-details-marker {
+  display: none;
+}
+
+.project-header h3 {
+  font-size: 18px;
   font-weight: normal;
-  margin: 0 0 6px;
+  margin: 0;
+  flex: 1;
 }
 
-.project p {
+.project-toggle {
+  font-family: monospace;
+  font-size: 12px;
+  color: #aaa;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+details[open] .project-toggle {
+  color: #555;
+}
+
+details[open] .project-toggle::after {
+  content: '− collapse';
+}
+
+.project-toggle::after {
+  content: '+ expand';
+}
+
+/* The collapsible body */
+.project-body {
+  padding-bottom: 20px;
+}
+
+.project-body p {
   color: #444;
   margin: 0 0 10px;
   font-size: 17px;
@@ -101,14 +150,21 @@ section h2 {
   font-family: monospace;
   font-size: 12px;
   color: #888;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .project a {
   font-family: monospace;
   font-size: 13px;
   color: #555;
+  text-decoration: none;
 }
+
+.project a:hover {
+  color: #111;
+}
+
+/* ── Stack ───────────────────────────────────────────────────── */
 
 .stack-group {
   margin-bottom: 24px;
@@ -128,6 +184,8 @@ section h2 {
   font-size: 15px;
   color: #333;
 }
+
+/* ── Footer ──────────────────────────────────────────────────── */
 
 footer {
   font-family: monospace;
