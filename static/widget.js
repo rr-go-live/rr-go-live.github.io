@@ -1,51 +1,45 @@
 /**
  * widget.js
  * ---------
- * Self-contained chat widget for Roger R.'s portfolio page.
+ * Self-contained two-tab widget for Roger R.'s portfolio page.
  *
- * How it works:
- *   1. This script injects its own HTML structure and CSS into the page when loaded.
- *   2. A toggle button in the bottom-right corner opens/closes the chat panel.
- *   3. When the user submits a message, it POSTs to the backend API and displays
- *      the response — or an error message if something went wrong.
- *   4. On mobile, the chat panel expands to a centered full-screen overlay.
+ * Tabs:
+ *   1. Email  — compose a message, opens the user's mail client via mailto
+ *   2. Chat   — AI assistant powered by the FastAPI backend
+ *
+ * External trigger:
+ *   Any link with data-rr-tab="email" or data-rr-tab="chat" will open
+ *   the widget to that tab when clicked. Used by the nav "email me" link.
  *
  * Configuration:
- *   Set the `data-api` attribute on the script tag to point to your backend:
  *   <script src="/static/widget.js" data-api="https://your-api-host.com"></script>
- *   If data-api is not set, it defaults to http://localhost:8000.
+ *   Defaults to http://localhost:8000 if data-api is not set.
  *
- * Styling:
- *   Matches the portfolio's black/white, monospace, minimal aesthetic.
- *   Uses Georgia serif for body text, monospace for labels and UI chrome.
- *   No colors — just black, white, and grays.
- *
- * Dependencies: None. Pure Vanilla JS + CSS. No frameworks required.
+ * Dependencies: None. Pure Vanilla JS + CSS.
  */
 
 (function () {
   "use strict";
 
   // ---------------------------------------------------------------------------
-  // Configuration
+  // Config
   // ---------------------------------------------------------------------------
 
-  // Read the API base URL from the script tag's data-api attribute.
-  // Falls back to localhost:8000 for local development.
   var currentScript = document.currentScript || (function () {
     var scripts = document.getElementsByTagName("script");
     return scripts[scripts.length - 1];
   })();
-  var API_BASE = (currentScript.getAttribute("data-api") || "http://localhost:8000").replace(/\/$/, "");
-  var CHAT_ENDPOINT = API_BASE + "/api/chat";
+
+  var API_BASE       = (currentScript.getAttribute("data-api") || "http://localhost:8000").replace(/\/$/, "");
+  var CHAT_ENDPOINT  = API_BASE + "/api/chat";
+  var CONTACT_EMAIL  = "roger.m.ramesh@gmail.com";
 
   // ---------------------------------------------------------------------------
-  // CSS injection
+  // CSS
   // ---------------------------------------------------------------------------
 
-  var WIDGET_CSS = `
-    /* ---- Chat toggle button (bottom-right corner) ---- */
-    #rr-chat-toggle {
+  var CSS = `
+    #rr-toggle {
       position: fixed;
       bottom: 28px;
       right: 28px;
@@ -62,20 +56,16 @@
       justify-content: center;
       z-index: 9999;
       box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-      transition: background 0.15s;
       font-family: monospace;
+      transition: background 0.15s;
     }
-    #rr-chat-toggle:hover {
-      background: #333;
-    }
+    #rr-toggle:hover { background: #333; }
 
-    /* ---- Chat panel ---- */
-    #rr-chat-panel {
+    #rr-panel {
       position: fixed;
       bottom: 90px;
       right: 28px;
       width: 360px;
-      max-height: 520px;
       background: #fff;
       border: 1px solid #111;
       display: none;
@@ -84,28 +74,53 @@
       font-family: Georgia, serif;
       font-size: 15px;
       line-height: 1.6;
+      max-height: 540px;
     }
-    #rr-chat-panel.open {
+    #rr-panel.open { display: flex; }
+
+    /* ---- Tab bar ---- */
+    #rr-tabs {
       display: flex;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fff;
+    }
+    .rr-tab {
+      flex: 1;
+      padding: 11px 0;
+      font-family: monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #aaa;
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: color 0.15s;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .rr-tab:hover { color: #555; }
+    .rr-tab.active {
+      color: #111;
+      border-bottom-color: #111;
     }
 
-    /* ---- Panel header ---- */
-    #rr-chat-header {
-      padding: 12px 16px;
+    /* ---- Header row ---- */
+    #rr-header {
+      padding: 10px 16px;
       border-bottom: 1px solid #e0e0e0;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #fff;
     }
-    #rr-chat-header-title {
+    #rr-header-title {
       font-family: monospace;
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: #888;
     }
-    #rr-chat-close {
+    #rr-close {
       background: none;
       border: none;
       cursor: pointer;
@@ -114,23 +129,82 @@
       padding: 0;
       line-height: 1;
     }
-    #rr-chat-close:hover {
+    #rr-close:hover { color: #111; }
+
+    /* ---- Panels ---- */
+    .rr-pane { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .rr-pane.active { display: flex; }
+
+    /* ── Email pane ── */
+    #rr-email-pane {
+      padding: 18px 16px;
+      gap: 10px;
+      overflow-y: auto;
+    }
+    #rr-email-pane label {
+      font-family: monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+      display: block;
+      margin-bottom: 3px;
+    }
+    #rr-email-pane input,
+    #rr-email-pane textarea {
+      width: 100%;
+      border: 1px solid #ccc;
+      padding: 8px 10px;
+      font-family: Georgia, serif;
+      font-size: 14px;
       color: #111;
+      background: #fff;
+      outline: none;
+      border-radius: 0;
+      box-sizing: border-box;
+      resize: none;
+    }
+    #rr-email-pane input:focus,
+    #rr-email-pane textarea:focus { border-color: #111; }
+    #rr-email-pane textarea { min-height: 100px; }
+    .rr-email-field { display: flex; flex-direction: column; }
+    #rr-email-send {
+      margin-top: 4px;
+      background: #111;
+      color: #fff;
+      border: none;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.15s;
+      align-self: stretch;
+    }
+    #rr-email-send:hover { background: #333; }
+    #rr-email-note {
+      font-family: monospace;
+      font-size: 11px;
+      color: #aaa;
+      text-align: center;
+      margin-top: 2px;
     }
 
-    /* ---- Message list ---- */
-    #rr-chat-messages {
+    /* ── Chat pane ── */
+    #rr-chat-pane { overflow: hidden; }
+    #rr-messages {
       flex: 1;
       overflow-y: auto;
-      padding: 16px;
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      min-height: 100px;
+      gap: 10px;
+      min-height: 120px;
+      max-height: 300px;
     }
     .rr-msg {
       max-width: 85%;
-      padding: 10px 13px;
+      padding: 9px 12px;
       font-size: 14px;
       line-height: 1.55;
     }
@@ -138,13 +212,11 @@
       align-self: flex-end;
       background: #111;
       color: #fff;
-      border-radius: 0;
     }
     .rr-msg.assistant {
       align-self: flex-start;
       background: #f5f5f5;
       color: #111;
-      border-radius: 0;
       border-left: 2px solid #111;
     }
     .rr-msg.error {
@@ -155,12 +227,10 @@
       font-family: monospace;
       font-size: 13px;
     }
-
-    /* ---- Loading indicator (animated dots) ---- */
     .rr-loading {
       display: flex;
       gap: 5px;
-      padding: 12px 16px;
+      padding: 10px 14px;
       align-self: flex-start;
     }
     .rr-loading span {
@@ -176,22 +246,19 @@
       0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
       40% { transform: translateY(-5px); opacity: 1; }
     }
-
-    /* ---- Input area ---- */
-    #rr-chat-input-area {
-      padding: 12px 16px;
+    #rr-input-area {
+      padding: 10px 14px;
       border-top: 1px solid #e0e0e0;
       display: flex;
       gap: 8px;
       align-items: flex-end;
     }
-    #rr-chat-input {
+    #rr-input {
       flex: 1;
       border: 1px solid #ccc;
       padding: 8px 10px;
       font-family: Georgia, serif;
       font-size: 14px;
-      line-height: 1.5;
       resize: none;
       min-height: 38px;
       max-height: 100px;
@@ -200,229 +267,274 @@
       outline: none;
       border-radius: 0;
     }
-    #rr-chat-input:focus {
-      border-color: #111;
-    }
-    #rr-chat-submit {
+    #rr-input:focus { border-color: #111; }
+    #rr-send {
       background: #111;
       color: #fff;
       border: none;
-      padding: 9px 14px;
+      padding: 9px 13px;
       cursor: pointer;
       font-family: monospace;
       font-size: 13px;
-      white-space: nowrap;
       transition: background 0.15s;
-      align-self: flex-end;
       height: 38px;
     }
-    #rr-chat-submit:hover {
-      background: #333;
-    }
-    #rr-chat-submit:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-
-    /* ---- Rate limit / error notice ---- */
+    #rr-send:hover { background: #333; }
+    #rr-send:disabled { background: #ccc; cursor: not-allowed; }
     #rr-chat-notice {
       font-family: monospace;
       font-size: 11px;
       color: #aaa;
       text-align: center;
-      padding: 4px 16px 10px;
+      padding: 4px 14px 8px;
     }
 
-    /* ---- Mobile: full-screen overlay ---- */
+    /* ---- Mobile ---- */
     @media (max-width: 480px) {
-      #rr-chat-panel {
+      #rr-panel {
         position: fixed;
-        bottom: 0;
-        right: 0;
-        left: 0;
-        top: 0;
+        inset: 0;
         width: 100%;
         max-height: 100%;
+        bottom: 0;
+        right: 0;
         border: none;
-        border-radius: 0;
       }
-      #rr-chat-toggle {
-        bottom: 20px;
-        right: 20px;
-      }
+      #rr-toggle { bottom: 20px; right: 20px; }
     }
   `;
 
   // ---------------------------------------------------------------------------
-  // HTML injection
+  // HTML
   // ---------------------------------------------------------------------------
 
-  var WIDGET_HTML = `
-    <button id="rr-chat-toggle" aria-label="Open chat" title="Ask about Roger">💬</button>
+  var HTML = `
+    <button id="rr-toggle" aria-label="Open contact panel">💬</button>
 
-    <div id="rr-chat-panel" role="dialog" aria-modal="true" aria-label="Chat with Roger's assistant">
-      <div id="rr-chat-header">
-        <span id="rr-chat-header-title">Ask about Roger</span>
-        <button id="rr-chat-close" aria-label="Close chat">&times;</button>
+    <div id="rr-panel" role="dialog" aria-modal="true" aria-label="Contact Roger">
+
+      <div id="rr-tabs">
+        <button class="rr-tab active" data-pane="email">Email</button>
+        <button class="rr-tab"        data-pane="chat">AI Assistant</button>
       </div>
 
-      <div id="rr-chat-messages" role="log" aria-live="polite" aria-relevant="additions">
-        <div class="rr-msg assistant">
-          Hi — I can answer questions about Roger's experience, projects, skills, and certifications. What would you like to know?
+      <div id="rr-header">
+        <span id="rr-header-title">Get in touch</span>
+        <button id="rr-close" aria-label="Close">&times;</button>
+      </div>
+
+      <!-- Email pane -->
+      <div id="rr-email-pane" class="rr-pane active">
+        <div class="rr-email-field">
+          <label for="rr-name">Your name</label>
+          <input id="rr-name" type="text" placeholder="Jane Smith" maxlength="80" />
         </div>
+        <div class="rr-email-field">
+          <label for="rr-subject">Subject</label>
+          <input id="rr-subject" type="text" placeholder="Reaching out about..." maxlength="120" />
+        </div>
+        <div class="rr-email-field">
+          <label for="rr-body">Message</label>
+          <textarea id="rr-body" placeholder="Your message..." maxlength="2000"></textarea>
+        </div>
+        <button id="rr-email-send">Open in mail app →</button>
+        <p id="rr-email-note">Opens your default mail client</p>
       </div>
 
-      <div id="rr-chat-input-area">
-        <textarea
-          id="rr-chat-input"
-          placeholder="Ask a question..."
-          rows="1"
-          maxlength="500"
-          aria-label="Your question"
-        ></textarea>
-        <button id="rr-chat-submit">Send</button>
+      <!-- Chat pane -->
+      <div id="rr-chat-pane" class="rr-pane">
+        <div id="rr-messages" role="log" aria-live="polite">
+          <div class="rr-msg assistant">
+            Hi — I can answer questions about Roger's experience, projects, skills, and certifications. What would you like to know?
+          </div>
+        </div>
+        <div id="rr-input-area">
+          <textarea id="rr-input" placeholder="Ask a question..." rows="1" maxlength="500" aria-label="Your question"></textarea>
+          <button id="rr-send">Send</button>
+        </div>
+        <div id="rr-chat-notice">Powered by Gemini · Questions about Roger only</div>
       </div>
-      <div id="rr-chat-notice">Powered by Gemini · Questions about Roger only</div>
+
     </div>
   `;
 
   // ---------------------------------------------------------------------------
-  // DOM initialization
+  // Inject
   // ---------------------------------------------------------------------------
 
   function injectStyles() {
-    var styleEl = document.createElement("style");
-    styleEl.id = "rr-chat-styles";
-    styleEl.textContent = WIDGET_CSS;
-    document.head.appendChild(styleEl);
+    var el = document.createElement("style");
+    el.id = "rr-widget-styles";
+    el.textContent = CSS;
+    document.head.appendChild(el);
   }
 
   function injectHTML() {
-    var container = document.createElement("div");
-    container.innerHTML = WIDGET_HTML;
-    document.body.appendChild(container);
+    var wrap = document.createElement("div");
+    wrap.innerHTML = HTML;
+    document.body.appendChild(wrap);
   }
 
   // ---------------------------------------------------------------------------
-  // Widget logic
+  // State
   // ---------------------------------------------------------------------------
 
-  var isOpen = false;
-  var isWaiting = false;
+  var isOpen      = false;
+  var isWaiting   = false;
+  var activePane  = "email";
 
-  function togglePanel() {
-    isOpen = !isOpen;
-    var panel = document.getElementById("rr-chat-panel");
-    var toggle = document.getElementById("rr-chat-toggle");
-    if (isOpen) {
-      panel.classList.add("open");
-      toggle.setAttribute("aria-label", "Close chat");
-      toggle.textContent = "✕";
-      document.getElementById("rr-chat-input").focus();
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  function openPanel(tab) {
+    isOpen = true;
+    document.getElementById("rr-panel").classList.add("open");
+    document.getElementById("rr-toggle").textContent = "✕";
+    document.getElementById("rr-toggle").setAttribute("aria-label", "Close panel");
+    if (tab) switchTab(tab);
+  }
+
+  function closePanel() {
+    isOpen = false;
+    document.getElementById("rr-panel").classList.remove("open");
+    document.getElementById("rr-toggle").textContent = "💬";
+    document.getElementById("rr-toggle").setAttribute("aria-label", "Open contact panel");
+  }
+
+  function switchTab(pane) {
+    activePane = pane;
+
+    // Update tab buttons
+    document.querySelectorAll(".rr-tab").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.pane === pane);
+    });
+
+    // Update panes
+    document.getElementById("rr-email-pane").classList.toggle("active", pane === "email");
+    document.getElementById("rr-chat-pane").classList.toggle("active", pane === "chat");
+
+    // Update header label
+    document.getElementById("rr-header-title").textContent =
+      pane === "email" ? "Get in touch" : "Ask about Roger";
+
+    // Focus relevant field
+    if (pane === "email") {
+      document.getElementById("rr-name").focus();
     } else {
-      panel.classList.remove("open");
-      toggle.setAttribute("aria-label", "Open chat");
-      toggle.textContent = "💬";
+      document.getElementById("rr-input").focus();
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Email send
+  // ---------------------------------------------------------------------------
+
+  function sendEmail() {
+    var name    = document.getElementById("rr-name").value.trim();
+    var subject = document.getElementById("rr-subject").value.trim();
+    var body    = document.getElementById("rr-body").value.trim();
+
+    if (!body) {
+      document.getElementById("rr-body").focus();
+      return;
+    }
+
+    // Build the mailto body — include sender name if provided
+    var mailBody = name ? "Hi Roger,\n\n" + body + "\n\n— " + name : body;
+    var mailSubject = subject || "Reaching out from your portfolio";
+
+    var mailto = "mailto:" + CONTACT_EMAIL
+      + "?subject=" + encodeURIComponent(mailSubject)
+      + "&body="    + encodeURIComponent(mailBody);
+
+    window.location.href = mailto;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chat send
+  // ---------------------------------------------------------------------------
+
   function appendMessage(role, text) {
-    var messagesEl = document.getElementById("rr-chat-messages");
-
-    var msgEl = document.createElement("div");
-    msgEl.className = "rr-msg " + role;
-    msgEl.textContent = text;
-
-    messagesEl.appendChild(msgEl);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return msgEl;
+    var el = document.createElement("div");
+    el.className = "rr-msg " + role;
+    el.textContent = text;
+    var log = document.getElementById("rr-messages");
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+    return el;
   }
 
   function showLoading() {
-    var messagesEl = document.getElementById("rr-chat-messages");
-    var loaderEl = document.createElement("div");
-    loaderEl.className = "rr-loading";
-    loaderEl.id = "rr-chat-loader";
-    loaderEl.innerHTML = "<span></span><span></span><span></span>";
-    messagesEl.appendChild(loaderEl);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    var el = document.createElement("div");
+    el.className = "rr-loading";
+    el.id = "rr-loader";
+    el.innerHTML = "<span></span><span></span><span></span>";
+    var log = document.getElementById("rr-messages");
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
   }
 
   function hideLoading() {
-    var loaderEl = document.getElementById("rr-chat-loader");
-    if (loaderEl) {
-      loaderEl.remove();
-    }
+    var el = document.getElementById("rr-loader");
+    if (el) el.remove();
   }
 
-  function setInputDisabled(disabled) {
-    document.getElementById("rr-chat-input").disabled = disabled;
-    document.getElementById("rr-chat-submit").disabled = disabled;
+  function setInputDisabled(val) {
+    document.getElementById("rr-input").disabled = val;
+    document.getElementById("rr-send").disabled  = val;
   }
 
-  function autoResizeTextarea(textarea) {
-    // Reset height to auto to recalculate, then set to scrollHeight.
-    // This makes the textarea grow with the content up to the CSS max-height.
-    textarea.style.height = "auto";
-    textarea.style.height = Math.min(textarea.scrollHeight, 100) + "px";
-  }
-
-  async function sendMessage() {
+  async function sendChat() {
     if (isWaiting) return;
 
-    var inputEl = document.getElementById("rr-chat-input");
-    var message = inputEl.value.trim();
+    var inputEl  = document.getElementById("rr-input");
+    var message  = inputEl.value.trim();
     if (!message) return;
 
-    // Clear the input and disable it while waiting.
     inputEl.value = "";
     inputEl.style.height = "auto";
     isWaiting = true;
     setInputDisabled(true);
-
-    // Show the user's message in the chat.
     appendMessage("user", message);
-
-    // Show the loading indicator.
     showLoading();
 
-    // Abort the request if the server takes longer than 60 seconds.
     var controller = new AbortController();
-    var timeoutId = setTimeout(function () { controller.abort(); }, 60000);
+    var timeoutId  = setTimeout(function () { controller.abort(); }, 60000);
 
     try {
-      var response = await fetch(CHAT_ENDPOINT, {
-        method: "POST",
+      var res = await fetch(CHAT_ENDPOINT, {
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message }),
-        signal: controller.signal,
+        body:    JSON.stringify({ message: message }),
+        signal:  controller.signal,
       });
 
       clearTimeout(timeoutId);
       hideLoading();
 
-      if (response.status === 429) {
+      if (res.status === 429) {
         appendMessage("error", "Too many requests. Please try again in a while.");
-      } else if (response.status === 400) {
+      } else if (res.status === 400) {
         appendMessage("error", "Message could not be processed. Please rephrase your question.");
-      } else if (!response.ok) {
+      } else if (!res.ok) {
         appendMessage("error", "Something went wrong. Please try again.");
       } else {
-        var data = await response.json();
+        var data = await res.json();
         appendMessage("assistant", data.response);
       }
-    } catch (networkError) {
+    } catch (err) {
       clearTimeout(timeoutId);
       hideLoading();
-      if (networkError.name === "AbortError") {
-        appendMessage("error", "Response timed out. The model is taking too long — try again.");
-      } else {
-        appendMessage("error", "Connection error. Please check your connection and try again.");
-      }
+      appendMessage("error",
+        err.name === "AbortError"
+          ? "Response timed out. Please try again."
+          : "Connection error. Please check your connection."
+      );
     } finally {
       isWaiting = false;
       setInputDisabled(false);
-      document.getElementById("rr-chat-input").focus();
+      document.getElementById("rr-input").focus();
     }
   }
 
@@ -431,32 +543,52 @@
   // ---------------------------------------------------------------------------
 
   function bindEvents() {
-    document.getElementById("rr-chat-toggle").addEventListener("click", togglePanel);
-    document.getElementById("rr-chat-close").addEventListener("click", togglePanel);
-    document.getElementById("rr-chat-submit").addEventListener("click", sendMessage);
+    // Toggle open/close
+    document.getElementById("rr-toggle").addEventListener("click", function () {
+      isOpen ? closePanel() : openPanel(activePane);
+    });
 
-    var inputEl = document.getElementById("rr-chat-input");
+    // Close button
+    document.getElementById("rr-close").addEventListener("click", closePanel);
 
-    // Submit on Enter (without Shift). Shift+Enter inserts a newline.
-    inputEl.addEventListener("keydown", function (event) {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
+    // Tab buttons
+    document.querySelectorAll(".rr-tab").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        switchTab(btn.dataset.pane);
+      });
+    });
+
+    // Email send
+    document.getElementById("rr-email-send").addEventListener("click", sendEmail);
+
+    // Chat send button
+    document.getElementById("rr-send").addEventListener("click", sendChat);
+
+    // Chat enter key
+    document.getElementById("rr-input").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendChat();
       }
     });
 
-    // Auto-resize the textarea as the user types.
-    inputEl.addEventListener("input", function () {
-      autoResizeTextarea(inputEl);
+    // Chat textarea auto-resize
+    document.getElementById("rr-input").addEventListener("input", function () {
+      this.style.height = "auto";
+      this.style.height = Math.min(this.scrollHeight, 100) + "px";
     });
 
-    // Panel only closes via the ✕ button or the toggle button — not by clicking outside.
+    // Escape key closes panel
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && isOpen) closePanel();
+    });
 
-    // Close with Escape key.
-    document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && isOpen) {
-        togglePanel();
-      }
+    // Nav "email me" link — any link with data-rr-tab attribute
+    document.querySelectorAll("[data-rr-tab]").forEach(function (link) {
+      link.addEventListener("click", function (e) {
+        e.preventDefault();
+        openPanel(link.getAttribute("data-rr-tab"));
+      });
     });
   }
 
@@ -470,10 +602,10 @@
     bindEvents();
   }
 
-  // Run after the DOM is ready.
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
     init();
   }
+
 })();
