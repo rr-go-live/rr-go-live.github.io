@@ -1,7 +1,7 @@
 /**
  * widget.js
  * ---------
- * Self-contained two-tab widget for Roger R.'s portfolio page.
+ * Self-contained two-tab widget for Roger Ramesh's portfolio page.
  *
  * Tabs:
  *   1. Email  — compose a message, opens the user's mail client via mailto
